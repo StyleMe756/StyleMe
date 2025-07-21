@@ -3,7 +3,7 @@ import os
 import uuid
 import json
 import requests
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, render_template
 from flask_cors import CORS
 from PIL import Image
 import google.generativeai as genai
@@ -12,8 +12,9 @@ import google.generativeai as genai
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyA00gYwZwiDXLc-zSGzYuD__aBCLastKno")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY", "f486e9ee6f9955c5aa876ad7eac18a2b5f328891a09e6a7a2eb9c163c2f143fa")
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
+
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 LOG_FILE = "debug_log.txt"
@@ -48,18 +49,9 @@ def search_products_with_serpapi(query, max_results=5):
 
         results = []
         for item in data.get("shopping_results", [])[:max_results]:
-            log_to_file(f"📦 Full SerpAPI item: {json.dumps(item, ensure_ascii=False)}")
-
             raw_link = item.get("link") or item.get("product_link") or item.get("serpapi_link") or ""
-
             if raw_link and not raw_link.startswith("http"):
                 raw_link = "https://" + raw_link.lstrip("/")
-
-
-
-
-            log_to_file(f"🔗 Product link: {raw_link}")
-
             results.append({
                 "title": item.get("title"),
                 "price": item.get("price"),
@@ -75,24 +67,16 @@ def search_products_with_serpapi(query, max_results=5):
         log_to_file(f"❌ Error using SerpAPI: {str(e)}")
         return []
 
-# === Static Files ===
+# === ROUTES ===
+
 @app.route("/")
 def index():
-    return send_from_directory("", "index.html")
-
-@app.route("/style.css")
-def style():
-    return send_from_directory("", "style.css")
-
-@app.route("/script.js")
-def script():
-    return send_from_directory("", "script.js")
+    return render_template("index.html")
 
 @app.route("/uploads/<filename>")
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-# === Analyze Route ===
 @app.route("/analyze", methods=["POST"])
 def analyze():
     log_to_file("--- ANALYZE FUNCTION STARTED ---")
@@ -102,16 +86,11 @@ def analyze():
 
     try:
         if 'image' not in request.files:
-            error_msg = "No image file part in the request."
-            log_to_file(f"❌ Error: {error_msg}")
-            return jsonify({"description": f"ERROR: {error_msg}", "links": []})
+            return jsonify({"description": "No image uploaded.", "links": []})
 
         image_file = request.files["image"]
-
         if image_file.filename == '':
-            error_msg = "No selected file."
-            log_to_file(f"❌ Error: {error_msg}")
-            return jsonify({"description": f"ERROR: {error_msg}", "links": []})
+            return jsonify({"description": "Empty filename.", "links": []})
 
         filename = f"{uuid.uuid4()}.jpg"
         path = os.path.join(UPLOAD_FOLDER, filename)
@@ -120,72 +99,56 @@ def analyze():
 
         with Image.open(path) as img:
             response = model.generate_content([
-                "Describe the outfit in this image in detail, focusing on specific clothing items (e.g., 'blue denim jacket', 'striped cotton t-shirt', 'black leather boots'), colors, patterns, and styles. If identifiable, mention brand names and material types. The goal is to generate terms that would be useful for a shopping search to find similar items.",
+                "Describe the outfit in this image in detail, focusing on specific clothing items...",
                 img
             ])
             description = response.text.strip()
             log_to_file(f"📄 Gemini Description: {description}")
 
-        if "cannot describe the outfit" in description.lower() or \
-           "not an image of clothing" in description.lower() or \
-           "please provide an actual image of an outfit" in description.lower():
-            log_to_file("⚠️ Gemini could not describe an outfit. Skipping product search.")
+        if "cannot describe the outfit" in description.lower():
             description += "\n\n(Please provide an actual image of an outfit for product search.)"
             links = []
         else:
-            # Try to extract clean bullet point search term
-            search_query = "white t-shirt"  # default
+            search_query = "white t-shirt"
             if "*" in description:
                 lines = [line.strip("* ").strip() for line in description.split("\n") if line.strip().startswith("*")]
                 if lines:
                     search_query = lines[0]
-            log_to_file(f"🧠 Using search query for SerpAPI: {search_query}")
+            log_to_file(f"🧠 Search Query: {search_query}")
             links = search_products_with_serpapi(search_query)
 
             if not links:
-                log_to_file("❌ SerpAPI search returned no products.")
                 description += "\n\n(No matching products found. Try a clearer outfit image.)"
 
         return jsonify({"description": description, "links": links})
 
     except Exception as e:
-        error_msg = f"An unexpected error occurred: {str(e)}"
-        log_to_file(f"❌ Error: {error_msg}")
-        return jsonify({"description": f"ERROR: {error_msg}", "links": []})
+        log_to_file(f"❌ Error: {str(e)}")
+        return jsonify({"description": f"Error: {str(e)}", "links": []})
 
     finally:
         if path and os.path.exists(path):
             try:
                 os.remove(path)
-                log_to_file(f"🧹 Cleaned up {path}")
             except Exception as e:
-                log_to_file(f"⚠️ Error cleaning up file {path}: {str(e)}")
+                log_to_file(f"⚠️ Cleanup error: {str(e)}")
 
-# === Chat Route ===
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
         data = request.get_json()
         user_message = data.get("message", "").strip()
-
         if not user_message:
             return jsonify({"reply": "Please enter a message."})
 
-        # Gemini text-only response
         response = model.generate_content(user_message)
-        reply = response.text.strip()
-        log_to_file(f"💬 Chatbot Reply: {reply}")
-
-        return jsonify({"reply": reply})
+        return jsonify({"reply": response.text.strip()})
 
     except Exception as e:
-        log_to_file(f"❌ Chatbot Error: {str(e)}")
+        log_to_file(f"❌ Chat error: {str(e)}")
         return jsonify({"reply": "Something went wrong."})
 
-
-# === Run Server ===
-import os
-
+# === RUN SERVER ===
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
