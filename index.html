@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Style Me – AI Fashion Finder</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">Style Me</div>
+    <div class="subtitle">Find Your Fashion Match</div>
+  </nav>
+
+  <main class="container">
+    <section class="upload-section">
+      <h2>Upload Your Outfit</h2>
+      <p class="description">AI will describe your outfit and find similar items to shop.</p>
+      <input type="file" id="imageInput" accept="image/*" />
+      <div id="previewBox" class="preview-box">Image preview will appear here</div>
+      <button onclick="sendImage()">🔍 Analyze My Style</button>
+      <div id="loader" class="loader" style="display: none;"></div>
+    </section>
+
+    <section class="message-area" id="messages"></section>
+
+    <section class="results-container">
+      <div class="cheap-block">
+        <h3>🟢 Budget-Friendly Option</h3>
+        <div id="cheapLink"></div>
+      </div>
+      <div class="expensive-block">
+        <h3>🔴 Luxury Option</h3>
+        <div id="expensiveLink"></div>
+      </div>
+    </section>
+
+    <section class="chat-section">
+      <input type="text" id="chatInput" placeholder="Ask our fashion bot..." />
+      <button onclick="sendChat()">Send</button>
+    </section>
+  </main>
+
+  <footer class="footer">
+    © 2025 <strong>Style Me</strong> – Built with passion, powered by AI
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
