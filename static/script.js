@@ -22,14 +22,16 @@ function sendImage() {
   const cheapLinkDiv = document.getElementById("cheapLink");
   const expensiveLinkDiv = document.getElementById("expensiveLink");
 
+  // Clear previous results
   messagesDiv.innerHTML = '';
   previewBox.innerHTML = '';
-  cheapLinkDiv.innerHTML = '<p><em>No product found.</em></p>';
-  expensiveLinkDiv.innerHTML = '<p><em>No product found.</em></p>';
+  cheapLinkDiv.innerHTML = '';
+  expensiveLinkDiv.innerHTML = '';
   loader.style.display = 'none';
 
   if (!file) return alert("Please upload an image.");
 
+  // Show image preview
   const reader = new FileReader();
   reader.onload = e => {
     const img = document.createElement('img');
@@ -48,7 +50,11 @@ function sendImage() {
   messagesDiv.innerHTML += `<p><em>Analyzing your style...</em></p>`;
   loader.style.display = 'block';
 
-  fetch("/analyze", { method: "POST", body: formData })
+  // Cache-busting timestamp added to prevent stale responses
+  fetch("/analyze?" + new Date().getTime(), {
+    method: "POST",
+    body: formData
+  })
     .then(res => res.json())
     .then(data => {
       loader.style.display = 'none';
@@ -59,6 +65,8 @@ function sendImage() {
         data.links.forEach(product => {
           messagesDiv.innerHTML += createProductCardHTML(product);
         });
+
+        // Split into cheap/expensive options
         if (data.links[0]) cheapLinkDiv.innerHTML = createProductCardHTML(data.links[0]);
         if (data.links[1]) expensiveLinkDiv.innerHTML = createProductCardHTML(data.links[1]);
       } else {
