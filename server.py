@@ -21,11 +21,13 @@ LOG_FILE = "debug_log.txt"
 
 # === Logging Helper ===
 def log_to_file(message):
+    timestamped = f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}"
+    print(timestamped)  # show in Render logs
     try:
         with open(LOG_FILE, "a", encoding='utf-8') as f:
-            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
+            f.write(timestamped + "\n")
     except Exception as log_err:
-        print(f"ERROR: Could not write to log file: {log_err} - Message: {message}")
+        print(f"ERROR writing to log: {log_err}")
 
 # === Gemini Setup ===
 genai.configure(api_key=GEMINI_API_KEY)
@@ -33,7 +35,7 @@ model = genai.GenerativeModel("gemini-1.5-flash")
 
 # === SerpAPI Product Search ===
 def search_products_with_serpapi(query, max_results=5):
-    log_to_file(f"Using SerpAPI to search for: {query}")
+    log_to_file(f"🧠 Searching SerpAPI for: {query}")
     serp_url = "https://serpapi.com/search.json"
     params = {
         "engine": "google",
@@ -64,11 +66,10 @@ def search_products_with_serpapi(query, max_results=5):
         return results
 
     except Exception as e:
-        log_to_file(f"❌ Error using SerpAPI: {str(e)}")
+        log_to_file(f"❌ SERPAPI FETCH ERROR: {str(e)}")
         return []
 
 # === ROUTES ===
-
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -99,37 +100,35 @@ def analyze():
 
         with Image.open(path) as img:
             response = model.generate_content([
-                "Describe the outfit in this image in detail, focusing on specific clothing items...",
+                "Describe the outfit in this image in detail...",
                 img
             ])
             description = response.text.strip()
-            log_to_file(f"📄 Gemini Description: {description}")
+            log_to_file(f"📄 Gemini Description:\n{description}")
 
-        if "cannot describe the outfit" in description.lower():
-            description += "\n\n(Please provide an actual image of an outfit for product search.)"
-            links = []
-        else:
-            search_query = "white t-shirt"
-            if "*" in description:
-                lines = [line.strip("* ").strip() for line in description.split("\n") if line.strip().startswith("*")]
-                if lines:
-                    search_query = lines[0]
-            log_to_file(f"🧠 Search Query: {search_query}")
-            links = search_products_with_serpapi(search_query)
+        # Parse search query from bullet list or fallback
+        search_query = "white t-shirt"
+        lines = [line.strip("*•- ").strip() for line in description.split("\n") if len(line.strip()) > 5]
+        if lines:
+            search_query = lines[0]
 
-            if not links:
-                description += "\n\n(No matching products found. Try a clearer outfit image.)"
+        log_to_file(f"🧠 Final search query used: {search_query}")
+        links = search_products_with_serpapi(search_query)
+
+        if not links:
+            description += "\n\n(No matching products found. Try a clearer outfit image.)"
 
         return jsonify({"description": description, "links": links})
 
     except Exception as e:
-        log_to_file(f"❌ Error: {str(e)}")
+        log_to_file(f"❌ Error in analyze route: {str(e)}")
         return jsonify({"description": f"Error: {str(e)}", "links": []})
 
     finally:
         if path and os.path.exists(path):
             try:
                 os.remove(path)
+                log_to_file(f"🧹 Cleaned up {path}")
             except Exception as e:
                 log_to_file(f"⚠️ Cleanup error: {str(e)}")
 
@@ -148,7 +147,7 @@ def chat():
         log_to_file(f"❌ Chat error: {str(e)}")
         return jsonify({"reply": "Something went wrong."})
 
-# === RUN SERVER ===
+# === Run Server ===
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
